@@ -1,4 +1,4 @@
-#!/usr/bin/python
+
 import random
 
 from scipy import stats
@@ -6,53 +6,17 @@ from sklearn.metrics import mean_squared_error
 import math
 import numpy
 import theano.tensor as T
-initWeight = 0.05
-
-
-def nextInitWeight():
-    return (random.random() - 0.5) * initWeight
-
-
-def ints(s):
-    res = []
-    for ss in s:
-        res.append(int(ss))
-    return res
-
-
-def fints(s):
-    res = []
-    res.append(float(s[0]))
-    for i in range(1, len(s)):
-        res.append(int(s[i]))
-    return res
-
-
-def win_prob(bid, winfun):
-    if bid in winfun:
-        return winfun[bid]
-    for key in sorted(winfun):
-        if bid <= key:
-            return winfun[key]
-    return 1.
 
 
 def normal_distribution(x, mu, sigma):
-    # print x, math.pow(x,2), - math.pow(x, 2), - math.pow(x, 2) / 2
-    # print math.exp(- math.pow(x, 2) / 2), math.sqrt(2 * math.pi)
     return math.exp(-((x - mu) ** 2) / (2 * (sigma ** 2))) / (math.sqrt(2 * math.pi) * sigma)
-    # return stats.norm.pdf(x, 0, 1)
 
 
 def negative_log_likelihood(z, zp, sigma):
     likelihood = 0.
     for i in range(len(z)):
-        # print z[i], zp[i]
-        # print z[i]-zp[i]
-        # print normal_distribution(z[i]-zp[i])
         x = (z[i] - zp[i]) / sigma
         nd = normal_distribution(x, 0, 1)
-        # nd = stats.norm.pdf(x, 0, 1)
         if nd != 0:
             likelihood -= math.log(nd)
     return likelihood
@@ -67,10 +31,36 @@ def loss(z, zp, featWeight, sigma):
     return nll + l2
 
 
+def get_sigma(train_yzx):
+    train_z = []
+    fi = open(train_yzx, 'r')
+    for line in fi:
+        z = ints(line.replace(":1", "").split())[1]
+        train_z.append(z)
+    fi.close()
+    sigma = numpy.std(train_z)
+    return sigma
+
+
+def output_prediction(featWeight, sigma, yzx, zp):
+    fi = open(yzx, 'r')
+    fo = open(zp, 'w')
+
+    for line in fi:
+        data = ints(line.replace(":1", "").split())
+        pred = 0.0
+        for i in range(2, len(data)):
+            feat = data[i]
+            if feat in featWeight:
+                pred += featWeight[feat] + normal_distribution(1.0, 0.0, sigma)
+        fo.write('%d\t%.6f\n' % (data[1], pred))
+    fo.close()
+    fi.close()
+
+
 def train(train_wyzx, test_yzx, log_file):
     print ('For ' + train_wyzx.split('/')[-1])
     bufferCaseNum = 1000000
-    # bufferCaseNum = 10
     featWeight = {}
     trainRounds = 30
     random.seed(10)
@@ -111,22 +101,17 @@ def train(train_wyzx, test_yzx, log_file):
                 for data in trainData:
                     mp = data[2]
                     w = win_prob(mp, zw_dict)
-                    fsid = 3 # feature start id
-                    # predict
+
                     pred = 0.0
-                    for i in range(fsid, len(data)):
+                    for i in range(3, len(data)):
                         feat = data[i]
                         if feat not in featWeight:
-                            featWeight[feat] = nextInitWeight()
-                        # pred += featWeight[feat]
-                        # pred += featWeight[feat] + stats.norm.pdf(1.0, 0.0, sigma)
+                            featWeight[feat] = (random.random() - 0.5) * 0.05
                         pred += featWeight[feat] + normal_distribution(1.0, 0.0, sigma)
                     train_pred.append(pred)
-                    # start to update weight
-                    # w_i = w_i + learning_rate * [ (y - p) * x_i - lamb * w_i ]
                     importance = math.pow(w / ws, importance_pow)
                     importance = 1.0/importance
-                    for i in range(fsid, len(data)):
+                    for i in range(3, len(data)):
                         feat = data[i]
                         featWeight[feat] = featWeight[feat] * (1 - eta * lamb) + (eta * importance) * (mp - pred)
                 trainData = []
@@ -135,22 +120,16 @@ def train(train_wyzx, test_yzx, log_file):
             for data in trainData:
                 mp = data[2]
                 w = win_prob(mp, zw_dict)
-                fsid = 3 # feature start id
-                # predict
+
                 pred = 0.0
-                for i in range(fsid, len(data)):
+                for i in range(3, len(data)):
                     feat = data[i]
                     if feat not in featWeight:
-                        featWeight[feat] = nextInitWeight()
-                    # pred += featWeight[feat]
-                    # pred += featWeight[feat] + stats.norm.pdf(1.0, 0.0, sigma)
+                        featWeight[feat] = (random.random() - 0.5) * 0.05
                     pred += featWeight[feat] + normal_distribution(1.0, 0.0, sigma)
                 train_pred.append(pred)
-                # start to update weight
-                # w_i = w_i + learning_rate * [ (y - p) * x_i - lamb * w_i ]
                 importance = math.pow(w / ws, importance_pow)
-                # importance = 1.0 / importance
-                for i in range(fsid, len(data)):
+                for i in range(3, len(data)):
                     feat = data[i]
                     featWeight[feat] = featWeight[feat] * (1 - eta * lamb) + (eta * importance) * (mp - pred)
         fi.close()
@@ -163,20 +142,16 @@ def train(train_wyzx, test_yzx, log_file):
         for line in fi:
             data = ints(line.replace(":1", "").split())
             mp = data[1]
-            fsid = 2 # feature start id
+
             pred = 0.0
-            for i in range(fsid, len(data)):
+            for i in range(2, len(data)):
                 feat = data[i]
                 if feat in featWeight:
-                    # pred += featWeight[feat]
-                    # pred += featWeight[feat] + stats.norm.pdf(1.0, 0.0, sigma)
                     pred += featWeight[feat] + normal_distribution(1.0, 0.0, sigma)
             z.append(mp)
             zp.append(pred)
         fi.close()
         sigma_test = numpy.std(z)
-        # test_ll = mean_squared_error(z, zp)
-        # new_train_ll = mean_squared_error(train_z, train_pred)
         test_ll = loss(z, zp, featWeight, sigma_test)
         new_train_ll = loss(train_z, train_pred, featWeight, sigma)
         if 0 < (train_ll - new_train_ll) / new_train_ll < 0.000005:
@@ -194,32 +169,29 @@ def train(train_wyzx, test_yzx, log_file):
     fo_log.close()
     return featWeight
 
-
-def get_sigma(train_yzx):
-    train_z = []
-    fi = open(train_yzx, 'r')
-    for line in fi:
-        z = ints(line.replace(":1", "").split())[1]
-        train_z.append(z)
-    fi.close()
-    sigma = numpy.std(train_z)
-    return sigma
+def ints(s):
+    res = []
+    for ss in s:
+        res.append(int(ss))
+    return res
 
 
-def output_prediction(featWeight, sigma, yzx, zp):
-    fi = open(yzx, 'r')
-    fo = open(zp, 'w')
+def fints(s):
+    res = []
+    res.append(float(s[0]))
+    for i in range(1, len(s)):
+        res.append(int(s[i]))
+    return res
 
-    for line in fi:
-        data = ints(line.replace(":1", "").split())
-        pred = 0.0
-        for i in range(2, len(data)):
-            feat = data[i]
-            if feat in featWeight:
-                pred += featWeight[feat] + normal_distribution(1.0, 0.0, sigma)
-        fo.write('%d\t%.6f\n' % (data[1], pred))
-    fo.close()
-    fi.close()
+
+def win_prob(bid, winfun):
+    if bid in winfun:
+        return winfun[bid]
+    for key in sorted(winfun):
+        if bid <= key:
+            return winfun[key]
+    return 1.
+    
 
 advs = ['1458', '2259', '2261', '2821', '2997', '3358', '3386', '3427', '3476', 'all']
 file_list = ['uimp', 'uimp.km']

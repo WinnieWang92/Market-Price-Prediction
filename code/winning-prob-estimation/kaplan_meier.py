@@ -37,7 +37,6 @@ for adv in advs:
     size = upper
     for line in fi:
         s = line.strip().split()
-        #b = int(s[0])  # boolean value
         b = int(s[0])  # bid price
         for i in range(1, len(s)):
             o = int(s[i])   # indicator
